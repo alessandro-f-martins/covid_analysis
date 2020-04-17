@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # %matplotlib
 
 import numpy as np
@@ -73,7 +75,8 @@ plt.plot_date(x=covid_SP.index, y=covid_SP['projected_cases'],
 plt.plot_date(x=covid_SP.index, y=covid_SP['projected_dcases'],
               label='Variação diária dos casos (projetado)',
               marker=',', ls='--')
-plt.axvline(x=today, ls=':', c='m', label='Hoje')
+plt.axvline(x=today, ls=':', c='m',
+            label='Hoje (%s)' % datetime.strftime(today, '%d/%m/%Y'))
 
 plt.title('Casos de Covid-19 no Estado de São Paulo até %s' %
           datetime.strftime(covid_SP.index[-1], '%d/%m/%Y'))
