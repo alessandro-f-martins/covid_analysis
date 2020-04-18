@@ -1,0 +1,12 @@
+{
+  "INPUT_FILE": "./Download_COVID19_20200417.csv",
+  "INPUT_FILE_SEP": ";",
+  "DATA_COLS": ["casosAcumulados", "obitosAcumulados"],
+  "COLS_FOR_DELTA": ["casosAcumulados", "obitosAcumulados"],
+  "COLS_FOR_PROJECTION": [
+    {"name": "casosAcumulados", "fit_func": "poly_4"},
+    {"name": "delta_casosAcumulados", "fit_func": "poly_4"}
+  ],
+  "DATE_COL": "data",
+  "STATE_COL": "estado"
+}

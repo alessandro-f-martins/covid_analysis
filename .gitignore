@@ -1,3 +1,7 @@
 old/
 old/*
+pics/
+pics/*
 *.png
+__pycache__/
+__pycache__/*
