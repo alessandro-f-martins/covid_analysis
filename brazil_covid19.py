@@ -76,7 +76,6 @@ def generate_next_period_projection(df, fit_cols, period=30):
     first_period = df[cfg['COLS_FOR_PROJECTION'][0]['name']].size
     added_days = np.arange(first_period, first_period + period + 1)
     added_data = []
-    # cols = tuple(fit_cols.keys())
 
     for col in fit_cols:
         added_data.append([fit_funcs[col['fit_func']](d, *col['coefs'])
