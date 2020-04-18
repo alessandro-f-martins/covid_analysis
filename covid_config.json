@@ -1,4 +1,5 @@
 {
+  "SOURCE": "https://covid.saude.gov.br/",
   "INPUT_FILE": "./Download_COVID19_20200417.csv",
   "INPUT_FILE_SEP": ";",
   "DATA_COLS": ["casosAcumulados", "obitosAcumulados"],
