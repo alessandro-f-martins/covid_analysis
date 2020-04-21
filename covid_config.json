@@ -1,12 +1,14 @@
 {
   "SOURCE": "https://covid.saude.gov.br/",
-  "INPUT_FILE": "./Download_COVID19_20200417.csv",
+  "INPUT_FILE": "./arquivo_geral_20-04-2020.csv",
   "INPUT_FILE_SEP": ";",
+  "INPUT_TIME_FORMAT": "%Y-%m-%d",
   "DATA_COLS": ["casosAcumulados", "obitosAcumulados"],
+  "TRIM_INITIAL_ZEROS": true,
   "COLS_FOR_DELTA": ["casosAcumulados", "obitosAcumulados"],
   "COLS_FOR_PROJECTION": [
-    {"name": "casosAcumulados", "fit_func": "poly_4"},
-    {"name": "delta_casosAcumulados", "fit_func": "poly_4"}
+    {"name": "casosAcumulados", "fit_func": "poly_3"},
+    {"name": "delta_casosAcumulados", "fit_func": "poly_1"}
   ],
   "DATE_COL": "data",
   "STATE_COL": "estado"

@@ -27,22 +27,31 @@ with (open('./covid_config.json', 'r')) as cfg_file:
 # Le os casos do arquivo CSV:
 def get_df():
     df = pd.read_csv(cfg['INPUT_FILE'], sep=cfg['INPUT_FILE_SEP'])
-    df[cfg['DATE_COL']] = pd.to_datetime(df[cfg['DATE_COL']])
-    states = np.unique(df[cfg['STATE_COL']].values)
+    df[cfg['DATE_COL']] = pd.to_datetime(df[cfg['DATE_COL']],
+                                         format=cfg['INPUT_TIME_FORMAT'])
+    states = np.unique(df[cfg['STATE_COL']].values).tolist()
+    states.append('BR')
 
     return df, states
 
 
 # Seleciona o dado por Estado
 def get_state_data(df, state='São Paulo'):
-    temp = df[df[cfg['STATE_COL']] == state][
-        [cfg['DATE_COL']] + cfg['DATA_COLS']].reset_index(drop=True)
-    ret_df = pd.DataFrame(data=temp.drop(columns=cfg['DATE_COL']).values,
-                          index=temp[cfg['DATE_COL']].values,
-                          columns=cfg['DATA_COLS'])
-    today = ret_df.index[-1]
+    if state == 'BR':
+        state_df = df.groupby(cfg['DATE_COL']).sum()[cfg['DATA_COLS']]
+    else:
+        temp = df[df[cfg['STATE_COL']] == state][
+            [cfg['DATE_COL']] + cfg['DATA_COLS']
+        ].reset_index(drop=True)
+        state_df = pd.DataFrame(data=temp.drop(columns=cfg['DATE_COL']).values,
+                                index=temp[cfg['DATE_COL']].values,
+                                columns=cfg['DATA_COLS'])
 
-    return ret_df, today
+    today = state_df.index[-1]
+    if cfg['TRIM_INITIAL_ZEROS']:
+        state_df = state_df[(state_df.T != 0).any()]
+
+    return state_df, today
 
 
 # Gera as variações diárias de casos e mortes:
@@ -71,6 +80,28 @@ def generate_projection_function(df):
     return df, fit_cols
 
 
+# Calcula qual funcao produz os minimos quadrados
+def calc_least_squares(df):
+    fit_cols = cfg['COLS_FOR_PROJECTION'].copy()
+    day_number = np.arange(df[cfg['COLS_FOR_PROJECTION'][0]['name']].size)
+
+    for c in fit_cols:
+        c['lsq'] = np.inf
+        for f in filter(lambda f: f.startswith('poly_'), fit_funcs):
+            coefs, _ = curve_fit(fit_funcs[f], day_number,
+                                 df[c['name']].values)
+
+            hyp = np.array([fit_funcs[f](d, *coefs) for d in day_number])
+            lsq_val = np.sum(np.square(hyp - df[c['name']].values))
+            if c['lsq'] > lsq_val:
+                c['lsq'] = lsq_val
+                c['coefs'] = coefs
+                c['fit_func'] = f
+                df['projected_' + c['name']] = hyp
+
+    return df, fit_cols
+
+
 # Cria a projeção para o próximo período:
 def generate_next_period_projection(df, fit_cols, period=30):
     first_period = df[cfg['COLS_FOR_PROJECTION'][0]['name']].size
@@ -93,29 +124,44 @@ def generate_next_period_projection(df, fit_cols, period=30):
 
 # Cria os gráficos:
 def plot_graphics(df, today, state, plot_projected=True):
-    plt.plot_date(x=df.index, y=df[cfg['DATA_COLS'][0]],
-                  label='Casos', marker=',', ls='-')
-    plt.plot_date(x=df.index, y=df['delta_' + cfg['COLS_FOR_DELTA'][0]],
-                  label='Variação diária dos casos', marker=',', ls='-')
-    plt.plot_date(x=df.index, y=df[cfg['DATA_COLS'][1]],
-                  label='Mortes', marker=',', ls='-')
-    plt.plot_date(x=df.index, y=df['delta_' + cfg['COLS_FOR_DELTA'][1]],
-                  label='Variação diária das mortes', marker=',', ls='-')
+    fig, ax = plt.subplots()
+    box_props = {'boxstyle': 'round', 'facecolor': 'wheat', 'alpha': 0.5}
+
+    ax.plot_date(x=df.index, y=df[cfg['DATA_COLS'][0]],
+                 label='Casos', marker=',', ls='-')
+    ax.plot_date(x=df.index, y=df['delta_' + cfg['COLS_FOR_DELTA'][0]],
+                 label='Variação diária dos casos', marker=',', ls='-')
+    ax.plot_date(x=df.index, y=df[cfg['DATA_COLS'][1]],
+                 label='Mortes', marker=',', ls='-')
+    ax.plot_date(x=df.index, y=df['delta_' + cfg['COLS_FOR_DELTA'][1]],
+                 label='Variação diária das mortes', marker=',', ls='-')
+
+    ax.text(x=0.6, y=0.9,
+            s='Casos hoje: %d' % df.loc[today][cfg['DATA_COLS'][0]],
+            transform=ax.transAxes, fontstyle='italic', bbox=box_props)
 
     _df = df.copy() if plot_projected else df[df.index[0]: today]
-    plt.plot_date(x=_df.index,
-                  y=_df['projected_' + cfg['COLS_FOR_PROJECTION'][0]['name']],
-                  label='Casos projetados', marker=',', ls='--')
-    plt.plot_date(x=_df.index,
-                  y=_df['projected_' + cfg['COLS_FOR_PROJECTION'][1]['name']],
-                  label='Variação diária dos casos (projetado)',
-                  marker=',', ls='--')
-    plt.axvline(x=today, ls=':', c='m',
-                label='Hoje (%s)' % datetime.strftime(today, '%d/%m/%Y'))
+    ax.plot_date(x=_df.index,
+                 y=_df['projected_' + cfg['COLS_FOR_PROJECTION'][0]['name']],
+                 label='Casos projetados', marker=',', ls='--')
+    ax.plot_date(x=_df.index,
+                 y=_df['projected_' + cfg['COLS_FOR_PROJECTION'][1]['name']],
+                 label='Variação diária dos casos (projetado)',
+                 marker=',', ls='--')
+    ax.axvline(x=today, ls=':', c='m',
+               label='Hoje (%s)' % datetime.strftime(today, '%d/%m/%Y'))
+    last_day = datetime.strftime(df.index[-1]
+                                 if plot_projected else today, '%d/%m/%Y')
 
-    last_day = datetime.strftime(df.index[-1] if plot_projected else today,
-                                 '%d/%m/%Y')
-    plt.title('Casos de Covid-19 no Estado de %s até %s' % (state, last_day))
+    if plot_projected:
+        last_value = int(_df['projected_' + cfg['COLS_FOR_PROJECTION']
+                             [0]['name']].iloc[-1])
+        ax.text(x=0.8, y=0.9,
+                s='Casos no último dia\nda projeção: %d' % last_value,
+                transform=ax.transAxes, fontstyle='italic', bbox=box_props)
+
+    title = f'Casos de Covid-19 no {"Estado de " + state if state != "BR" else "Brasil"} até {last_day}'
+    plt.title(title)
     plt.legend()
     plt.show()
 
@@ -125,22 +171,28 @@ if __name__ == "__main__":
     df, states = get_df()
 
     while True:
-        state = input('Entre com o nome do Estado para análise (ou qualquer outra linha para sair): ')
+        state = input(
+            'Nome do Estado para análise (ou qualquer outro texto para sair): '
+        )
         if state not in states:
             break
 
         state_df, today = get_state_data(df, state)
-        state_df = generate_daily_delta(state_df)
-        state_df, fit_cols = generate_projection_function(state_df)
+        state_df, fit_cols = generate_projection_function(
+            generate_daily_delta(state_df))
 
         try:
-            use_proj = int(input('Projeção para quantos dias (0 para não gerar): '))
+            use_proj = int(
+                input('Dias para projeção (0 ou Enter para não gerar): '))
         except ValueError:
             use_proj = 0
         if use_proj:
             state_df = generate_next_period_projection(state_df,
                                                        fit_cols, use_proj)
-        plot_graphics(state_df, today, state, use_proj != 0)
+        print('Numero de casos no ultimo dia da série: %d'
+              % int(state_df['projected_' + cfg['COLS_FOR_PROJECTION']
+                             [0]['name']].iloc[-1]))
         print('Seu gráfico foi gerado!')
+        plot_graphics(state_df, today, state, use_proj != 0)
 
     print('Obrigado!')
